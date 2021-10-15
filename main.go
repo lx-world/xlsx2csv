@@ -6,99 +6,49 @@ package main
 
 import (
 	"encoding/csv"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"log"
-	"os"
 
 	"github.com/tealeg/xlsx/v3"
 )
 
-func generateCSVFromXLSXFile(w io.Writer, excelFileName string, sheetIndex int, csvOpts csvOptSetter) error {
-	xlFile, err := xlsx.OpenFile(excelFileName)
-	if err != nil {
-		return err
-	}
-	sheetLen := len(xlFile.Sheets)
-	switch {
-	case sheetLen == 0:
-		return errors.New("This XLSX file contains no sheets.")
-	case sheetIndex >= sheetLen:
-		return fmt.Errorf("No sheet %d available, please select a sheet between 0 and %d\n", sheetIndex, sheetLen-1)
-	}
+func generateCSVFromXLSXFile(w io.Writer,sheet *xlsx.Sheet) error {
 	cw := csv.NewWriter(w)
-	if csvOpts != nil {
-		csvOpts(cw)
-	}
-	sheet := xlFile.Sheets[sheetIndex]
+
 	var vals []string
-	err = sheet.ForEachRow(func(row *xlsx.Row) error {
+	err := sheet.ForEachRow(func(row *xlsx.Row) error {
 		if row != nil {
 			vals = vals[:0]
 			err := row.ForEachCell(func(cell *xlsx.Cell) error {
+				if cell.NumFmt == "mm-dd-yy"{
+					cell.NumFmt = "m/d/yyyy"
+				}
 				str, err := cell.FormattedValue()
 				if err != nil {
+					fmt.Printf("GO ====> %v\n",err)
 					return err
 				}
 				vals = append(vals, str)
 				return nil
 			})
 			if err != nil {
+				fmt.Printf("GO ====> %v\n",err)
 				return err
 			}
 		}
-		cw.Write(vals)
+		if err := cw.Write(vals); err != nil{
+			fmt.Printf("GO ====> %v\n",err)
+			return err
+		}
 		return nil
 	})
 	if err != nil {
+		fmt.Printf("GO ====> %v\n",err)
 		return err
 	}
 	cw.Flush()
 	return cw.Error()
 }
 
-type csvOptSetter func(*csv.Writer)
-
 func main() {
-	var (
-		outFile    = flag.String("o", "-", "filename to output to. -=stdout")
-		sheetIndex = flag.Int("i", 0, "Index of sheet to convert, zero based")
-		delimiter  = flag.String("d", ";", "Delimiter to use between fields")
-	)
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, `%s
-	dumps the given xlsx file's chosen sheet as a CSV,
-	with the specified delimiter, into the specified output.
-
-Usage:
-	%s [flags] <xlsx-to-be-read>
-`, os.Args[0], os.Args[0])
-		flag.PrintDefaults()
-	}
-
-	flag.Parse()
-	if flag.NArg() != 1 {
-		flag.Usage()
-		os.Exit(1)
-	}
-	out := os.Stdout
-	if !(*outFile == "" || *outFile == "-") {
-		var err error
-		if out, err = os.Create(*outFile); err != nil {
-			log.Fatal(err)
-		}
-	}
-	defer func() {
-		if closeErr := out.Close(); closeErr != nil {
-			log.Fatal(closeErr)
-		}
-	}()
-
-	if err := generateCSVFromXLSXFile(out, flag.Arg(0), *sheetIndex,
-		func(cw *csv.Writer) { cw.Comma = ([]rune(*delimiter))[0] },
-	); err != nil {
-		log.Fatal(err)
-	}
 }
